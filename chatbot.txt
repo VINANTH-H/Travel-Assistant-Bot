@@ -1,0 +1,537 @@
+let userContext = {
+    interest: null,
+    budget: null,
+    stage: 'initial',
+    selectedPlaces: [],
+};
+
+// Function to check if the user is greeting
+function isGreeting(message) {
+    const greetings = ["hi", "hello", "hey", "greetings", "howdy", "morning", "evening"];
+    return greetings.some(greeting => message.toLowerCase().includes(greeting));
+}
+
+function addMessageToChat(sender, message) {
+    const chatBox = document.querySelector('.chat-box');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message ' + sender;
+    messageDiv.innerHTML = message;
+    chatBox.appendChild(messageDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+function handleUserInput() {
+    const inputField = document.querySelector('.input-area input');
+    const userMessage = inputField.value.trim();
+
+    if (userMessage) {
+        addMessageToChat('user', userMessage);
+        inputField.value = '';
+
+        generateBotResponse(userMessage);
+    }
+}
+
+function generateBotResponse(userMessage = '') {
+    let botResponse = "";
+
+    // Check if the user is greeting
+    if (isGreeting(userMessage) && userContext.stage === 'initial') {
+        botResponse = "Hello! How can I assist you with your trip planning today?";
+        setTimeout(() => addMessageToChat('bot', botResponse), 1000);
+        return;
+    }
+
+    switch (userContext.stage) {
+        case 'initial':
+            botResponse = "Hello! Tell me about the kind of trip you're looking for. You can describe it in your own words.";
+            userContext.stage = 'awaitingInterest';
+            break;
+
+        case 'awaitingInterest':
+            if (userMessage) {
+                const validInterests = ["beach", "mountain", "city"];
+                const matchedInterest = validInterests.find(interest => userMessage.toLowerCase().includes(interest));
+
+                if (matchedInterest) {
+                    userContext.interest = matchedInterest;
+                    botResponse = `Got it! You want to visit a ${matchedInterest} destination. What's your budget for this trip? Please enter an amount in dollars.`;
+                    userContext.stage = 'awaitingBudget';
+                } else {
+                    botResponse = "Hmm, I didn't quite understand. Could you tell me more about the kind of trip you're looking for? Try mentioning a type like 'beach', 'mountain', 'city', etc.";
+                }
+            } else {
+                botResponse = "Please tell me more about the kind of trip you're interested in.";
+            }
+            break;
+
+            case 'awaitingBudget':
+                // Ensure the input contains a dollar sign and a valid number
+                if (userMessage.includes('$')) {
+                    const cleanedInput = userMessage.replace(/\s+/g, '').replace('$', '');
+                    const budgetAmount = parseFloat(cleanedInput);
+            
+                    if (!isNaN(budgetAmount) && budgetAmount > 0) {
+                        userContext.budget = budgetAmount;
+                        const suggestions = getSuggestedPlaces(userContext.interest, userContext.budget);
+                        botResponse = `Here are some suggestions for your budget of $${budgetAmount}:\n${suggestions}`;
+                        userContext.stage = 'selectingPlaces';
+                    } else {
+                        botResponse = "Please enter a valid budget with a dollar symbol, e.g., '$500'.";
+                    }
+                } else {
+                    botResponse = "Please include a dollar symbol ('$') when entering your budget, e.g., '$500'.";
+                }
+                break;
+            
+
+        case 'itineraryStage':
+            const selectedPlaces = Array.from(document.querySelectorAll('input[type="checkbox"]:checked')).map(
+                input => input.value
+            );
+
+            if (selectedPlaces.length > 0) {
+                userContext.selectedPlaces = selectedPlaces;
+                botResponse = generateItinerary(userContext.interest, userContext.budget, selectedPlaces);
+                botResponse += generateBookingLinks();
+                botResponse += "<p>Feel free to reach out again if you need more help! Have a wonderful trip!</p>";
+                userContext.stage = 'initial'; // Reset stage for a new interaction
+            } else {
+                botResponse = "Please select at least one place to create an itinerary.";
+            }
+            break;
+
+        default:
+            botResponse = "I'm here to help! Please start by telling me what kind of trip you're looking for.";
+            userContext.stage = 'initial';
+            break;
+    }
+
+    setTimeout(() => addMessageToChat('bot', botResponse), 1000);
+}
+
+function getSuggestedPlaces(interest, budget) {
+    const mockData = {
+        "beach": {
+            low: ["Goa, India", "Tulum, Mexico", "Bali, Indonesia","Phuket, Thailand", "Sri Lanka", "Varkala, India", "Kovalam, India", "Kanyakumari, India"],
+            medium: ["Maui, Hawaii", "Phuket, Thailand", "Malaga, Spain", "Zanzibar, Tanzania", "Koh Samui, Thailand", "Gokarna, India", "Rishikonda Beach, India", "Alleppey, India"],
+            high: ["Maldives", "Seychelles", "Bora Bora","The Great Barrier Reef", "Santorini, Greece", "Kumarakom, India", "Andaman Islands, India"]
+        },
+        "mountain": {
+            low: ["Kasol, India", "Rocky Mountains, USA", "Himalayas, Nepal","Coorg, India", "Wayanad, India", "Nilgiris, India"],
+            medium: ["Swiss Alps", "Banff, Canada", "Dolomites, Italy","Pyrenees, Spain", "Munnar, India", "Ooty, India", "Kodaikanal, India"],
+            high: ["Aspen, USA", "Whistler, Canada", "Mont Blanc, France","The Alps, Switzerland", "Kilimanjaro, Tanzania", "Annapurna Circuit, Nepal"]
+        },
+        "city": {
+            low: ["Bangkok, Thailand", "Mexico City, Mexico", "Istanbul, Turkey","Delhi, India", "Lagos, Nigeria", "Chennai, India", "Hyderabad, India", "Bangalore, India"],
+            medium: ["New York, USA", "London, UK", "Barcelona, Spain","Rome, Italy", "Cape Town, South Africa", "Kochi, India", "Pune, India", "Jaipur, India"],
+            high: ["Tokyo, Japan", "Paris, France", "Dubai, UAE","Singapore", "Sydney, Australia", "Mumbai, India", "Delhi, India"]
+        }
+    };
+
+    const priceRange = budget < 500 ? "low" : budget <= 1500 ? "medium" : "high";
+
+    const suggestedPlaces = mockData[interest][priceRange];
+    const suggestionHTML = suggestedPlaces.map(
+        place => `<li><input type="checkbox" value="${place}"> ${place}</li>`
+    ).join('');
+
+    return `
+        <p><strong>Suggested Places:</strong></p>
+        <ul style="list-style: none; padding: 0;">${suggestionHTML}</ul>
+        <button id="confirm-places">Confirm Selection</button>
+    `;
+}
+
+function generateItinerary(interest, budget, selectedPlaces) {
+    const hotelRecommendations = {
+        low: ["Budget Inn", "Cozy Lodge", "Economy Stay"],
+        medium: ["Comfort Suites", "Holiday Resort", "Midtown Hotel"],
+        high: ["Luxury Palace", "Grand Hotel", "Premium Stay"]
+    };
+
+    const priceRange = budget < 500 ? 'low' : budget <= 1500 ? 'medium' : 'high';
+
+    const uniqueHotels = Array.from(new Set(hotelRecommendations[priceRange]));
+
+    const tableStyle = `
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 1.1em;
+            font-family: 'Poppins', sans-serif;
+            text-align: left;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #141414; /* Netflix dark background */
+            color: #ffffff; /* White text for contrast */
+        }
+        th, td {
+            padding: 12px 15px;
+            border: 1px solid #333333; /* Dark border for seamless design */
+        }
+        th {
+            background-color: #e50914; /* Netflix red for headers */
+            color: #ffffff;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        tr:nth-child(even) {
+            background-color: #333333; /* Dark grey for even rows */
+        }
+        tr:hover {
+            background-color: #444444; /* Lighter grey on hover for rows */
+        }
+        td {
+            font-size: 1em;
+        }
+    </style>
+`;
+
+let tableHTML = `
+    ${tableStyle}
+    <table>
+        <thead>
+            <tr>
+                <th>Place to Visit</th>
+                <th>Recommended Hotel</th>
+                <th>Budget Range</th>
+            </tr>
+        </thead>
+        <tbody>`;
+
+    selectedPlaces.forEach((place, index) => {
+        const hotel = uniqueHotels[index % uniqueHotels.length];
+        tableHTML += `
+            <tr>
+                <td>${place}</td>
+                <td>${hotel}</td>
+                <td>${priceRange.charAt(0).toUpperCase() + priceRange.slice(1)}</td>
+            </tr>`;
+    });
+
+    tableHTML += `
+            </tbody>
+        </table>
+        <p style="font-size: 1.2em; margin-top: 20px;">Enjoy your trip!</p>
+    `;
+
+    return tableHTML;
+}
+
+function generateBookingLinks() {
+    return `
+        <p>To book your flights and accommodations, you can visit the following links:</p>
+        <ul style="list-style: none; padding: 0;">
+            <li><a href="https://www.expedia.com/" target="_blank" style="color: #e50914; font-weight: bold; text-decoration: none; transition: color 0.3s ease;">Book Flights and Hotels on Expedia</a></li>
+            <li><a href="https://www.booking.com/" target="_blank" style="color: #e50914; font-weight: bold; text-decoration: none; transition: color 0.3s ease;">Find Hotels on Booking.com</a></li>
+            <li><a href="https://www.kayak.com/" target="_blank" style="color: #e50914; font-weight: bold; text-decoration: none; transition: color 0.3s ease;">Search for Flights on Kayak</a></li>
+            <li><a href="https://www.airbnb.com/" target="_blank" style="color: #e50914; font-weight: bold; text-decoration: none; transition: color 0.3s ease;">Explore Stays on Airbnb</a></li>
+        </ul>
+    `;
+}
+
+
+document.querySelector('.input-area button').addEventListener('click', handleUserInput);
+document.querySelector('.input-area input').addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') {
+        handleUserInput();
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    generateBotResponse();
+});
+
+// Event listener for Confirm Selection button
+document.addEventListener('click', function (event) {
+    if (event.target.id === 'confirm-places') {
+        userContext.stage = 'itineraryStage';
+        generateBotResponse();
+    }
+});
+
+// Function to generate shareable chat link
+function generateChatLink() {
+    const chatBox = document.querySelector('.chat-box');
+    const messages = Array.from(chatBox.querySelectorAll('.message')).map(msg => ({
+        sender: msg.className.includes('user') ? 'user' : 'bot',
+        text: msg.innerText
+    }));
+    
+    const encodedChat = encodeURIComponent(JSON.stringify(messages));
+    const shareableLink = `${window.location.origin}${window.location.pathname}?chat=${encodedChat}`;
+    return shareableLink;
+}
+
+// Function to share on WhatsApp
+function shareOnWhatsApp() {
+    const link = generateChatLink();
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(
+        "Check out my chat with the Travel Planner Bot: " + link
+    )}`;
+    window.open(whatsappUrl, '_blank');
+}
+
+// Function to share on Twitter
+function shareOnTwitter() {
+    const link = generateChatLink();
+    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+        "Check out my chat with the Travel Planner Bot: " + link
+    )}`;
+    window.open(twitterUrl, '_blank');
+}
+
+// Attach event listeners
+document.getElementById('share-whatsapp').addEventListener('click', shareOnWhatsApp);
+document.getElementById('share-twitter').addEventListener('click', shareOnTwitter);
+
+// Load and display chat if accessed via a shared link
+document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatData = urlParams.get('chat');
+
+    if (chatData) {
+        const messages = JSON.parse(decodeURIComponent(chatData));
+        const chatBox = document.querySelector('.chat-box');
+        chatBox.innerHTML = ''; // Clear existing content
+
+        messages.forEach(msg => {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${msg.sender}`;
+            messageDiv.innerText = msg.text;
+            chatBox.appendChild(messageDiv);
+        });
+
+        chatBox.scrollTop = chatBox.scrollHeight; // Scroll to bottom
+    }
+});
+
+// Function to restore chat from URL
+function restoreChatFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatData = urlParams.get('chat'); // Get the 'chat' parameter
+    if (chatData) {
+        try {
+            const messages = JSON.parse(decodeURIComponent(chatData)); // Decode and parse chat data
+            const chatBox = document.querySelector('.chat-box');
+
+            // Clear existing chat messages
+            chatBox.innerHTML = '';
+
+            // Re-render the chat messages
+            messages.forEach((msg) => {
+                const messageElement = document.createElement('div');
+                messageElement.className = `message ${msg.sender}`; // 'user' or 'bot'
+                messageElement.innerText = msg.text;
+                chatBox.appendChild(messageElement);
+            });
+        } catch (e) {
+            console.error('Error decoding chat data:', e);
+        }
+    }
+}
+
+// Call this function when the page loads
+document.addEventListener('DOMContentLoaded', restoreChatFromURL);
+
+
+
+<--CSS--->
+
+/* General Styling */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+  color: #333;
+}
+
+/* Navbar */
+.navbar {
+  background-color: #162c4d;
+  color: #fff;
+  padding: 10px;
+  text-align: center;
+}
+
+.navbar h1 {
+  font-size: 24px;
+}
+
+.navbar nav a {
+  color: #fff;
+  margin: 0 10px;
+  text-decoration: none;
+  transition: color 0.3s ease;
+}
+
+.navbar nav a:hover {
+  color: #d4af37; /* Gold color on hover */
+}
+
+/* Homepage Section */
+.home-section {
+  text-align: center;
+  padding: 50px 20px;
+  background-color: #f4f4f4;
+}
+
+.home-section h2 {
+  font-size: 2em;
+  margin-bottom: 10px;
+}
+
+.start-btn {
+  background-color: #162c4d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+.start-btn:hover {
+  background-color: #d4af37;
+  transform: scale(1.05); /* Slightly enlarges the button on hover */
+}
+
+/* Chat Section */
+.chat-section {
+  padding: 20px;
+  background-color: #e2e8f0;
+}
+
+.chat-box {
+  background-color: #fff;
+  border-radius: 5px;
+  padding: 10px;
+  height: 300px;
+  overflow-y: scroll;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message {
+  max-width: 70%;
+  padding: 8px;
+  margin: 5px 0;
+  border-radius: 5px;
+}
+
+.message.bot {
+  background-color: #e0f7fa;
+  align-self: flex-start;
+  text-align: left;
+}
+
+.message.user {
+  background-color: rgb(248, 241, 146);
+  align-self: flex-end;
+  text-align: right;
+}
+
+.input-area {
+  display: flex;
+  gap: 10px;
+}
+
+.input-area input[type="text"] {
+  flex-grow: 1;
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  transition: border-color 0.3s ease;
+}
+
+.input-area input[type="text"]:focus {
+  border-color: #536c78; /* Border color change on focus */
+}
+
+.input-area button {
+  padding: 10px 20px;
+  background-color: #162c4d;
+  color: white;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+.input-area button:hover {
+  background-color:#d4af37;
+  transform: scale(1.05);
+}
+
+/* Destinations Section */
+.destinations-section {
+  padding: 20px;
+}
+
+.destination-cards {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+}
+
+.card {
+  background-color: #fff;
+  border-radius: 5px;
+  padding: 15px;
+  text-align: center;
+  width: 200px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card img {
+  width: 100%;
+  height: auto;
+  border-radius: 5px;
+}
+
+.card h3 {
+  margin: 10px 0;
+}
+
+.card button {
+  background-color: #172b42;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s ease, transform 0.3s ease;
+}
+
+.card button:hover {
+  background-color: #d4af37;
+  transform: scale(1.05); /* Slightly enlarges the button on hover */
+}
+
+.card:hover {
+  transform: translateY(-5px); /* Moves the card up slightly on hover */
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Contact Section */
+.contact-section {
+  text-align: center;
+  padding: 30px 20px;
+  background-color: #f4f4f4;
+}
+
+.social-icon:hover {
+  transform: scale(1.1);
+  transition: transform 0.3s ease;
+}
